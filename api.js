@@ -37,6 +37,33 @@ const executeAttack = (command, clientIP) => {
   });
 };
 
+const pkillProcesses = () => {
+  const processes = ["flood", "killer", "bypass", "tlskill", "priv-flood"];
+  let pidList = [];
+
+  processes.forEach(process => {
+    const command = `pgrep -f ${process}`; // Lấy PID của các tiến trình có tên process
+    exec(command, (error, stdout, stderr) => {
+      if (stderr) console.error(stderr);
+      
+      const pids = stdout.trim().split("\n"); // Lấy các PID và chia thành mảng
+      pidList = pidList.concat(pids); // Thêm vào danh sách PID
+
+      console.log(`PID của tiến trình ${process}: ${pids.join(", ")}`);
+      
+      // Sau khi lấy các PID, thực hiện lệnh pkill
+      const killCommand = `pkill -f -9 ${process}`;
+      exec(killCommand, (killError, killStdout, killStderr) => {
+        if (killStderr) console.error(killStderr);
+        console.log(`Đã dừng tiến trình ${process}`);
+      });
+    });
+  });
+
+  // Trả về danh sách các PID bị dừng sau khi pkill
+  return pidList;
+};
+
 app.get("/api/attack", (req, res) => {
   const { key, host, time, method, port } = req.query;
   const clientIP = req.headers["x-forwarded-for"] || req.connection.remoteAddress;
@@ -72,6 +99,21 @@ app.get("/api/attack", (req, res) => {
   }
 
   executeAttack(command, clientIP);
+});
+
+app.get("/api/pkill", (req, res) => {
+  const { pkill } = req.query;
+
+  if (pkill === "true") {
+    const pidList = pkillProcesses();
+    res.status(200).json({
+      status: "success",
+      message: "Đã dừng tất cả các tiến trình tấn công.",
+      pids: pidList.join(", ") // Trả về danh sách PID của các tiến trình đã dừng
+    });
+  } else {
+    return res.status(400).json({ status: "error", message: "Tham số pkill không hợp lệ." });
+  }
 });
 
 getPublicIP().then((ip) => {
