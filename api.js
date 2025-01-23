@@ -37,28 +37,34 @@ const executeAttack = (command, clientIP) => {
   });
 };
 
-const pkillProcesses = () => {
+const pkillProcesses = async () => {
   const processes = ["flood", "killer", "bypass", "tlskill", "priv-flood"];
   let pidList = [];
 
-  processes.forEach(process => {
-    const command = `pgrep -f ${process}`; // Lấy PID của các tiến trình có tên process
-    exec(command, (error, stdout, stderr) => {
-      if (stderr) console.error(stderr);
-      
-      const pids = stdout.trim().split("\n"); // Lấy các PID và chia thành mảng
-      pidList = pidList.concat(pids); // Thêm vào danh sách PID
+  // Sử dụng Promise.all để đồng bộ các lệnh exec
+  await Promise.all(processes.map((process) => {
+    return new Promise((resolve, reject) => {
+      const command = `pgrep -f ${process}`; // Lấy PID của các tiến trình có tên process
+      exec(command, (error, stdout, stderr) => {
+        if (stderr) {
+          reject(stderr);
+        }
 
-      console.log(`PID của tiến trình ${process}: ${pids.join(", ")}`);
-      
-      // Sau khi lấy các PID, thực hiện lệnh pkill
-      const killCommand = `pkill -f -9 ${process}`;
-      exec(killCommand, (killError, killStdout, killStderr) => {
-        if (killStderr) console.error(killStderr);
-        console.log(`Đã dừng tiến trình ${process}`);
+        const pids = stdout.trim().split("\n"); // Lấy các PID và chia thành mảng
+        pidList = pidList.concat(pids); // Thêm vào danh sách PID
+
+        console.log(`PID của tiến trình ${process}: ${pids.join(", ")}`);
+
+        // Sau khi lấy các PID, thực hiện lệnh pkill
+        const killCommand = `pkill -f -9 ${process}`;
+        exec(killCommand, (killError, killStdout, killStderr) => {
+          if (killStderr) reject(killStderr);
+          console.log(`Đã dừng tiến trình ${process}`);
+          resolve();
+        });
       });
     });
-  });
+  }));
 
   // Trả về danh sách các PID bị dừng sau khi pkill
   return pidList;
@@ -101,11 +107,11 @@ app.get("/api/attack", (req, res) => {
   executeAttack(command, clientIP);
 });
 
-app.get("/api/pkill", (req, res) => {
+app.get("/api/pkill", async (req, res) => {
   const { pkill } = req.query;
 
   if (pkill === "true") {
-    const pidList = pkillProcesses();
+    const pidList = await pkillProcesses();
     res.status(200).json({
       status: "success",
       message: "Đã dừng tất cả các tiến trình tấn công.",
