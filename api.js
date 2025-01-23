@@ -23,7 +23,7 @@ const getPublicIP = async () => {
 const validateInput = ({ key, host, time, method, port }) => {
   if (![key, host, time, method, port].every(Boolean)) return "Thiếu tham số yêu cầu";
   if (key !== "negan") return "Invalid Key";
-  if (time > 300) return "Thời gian phải nhỏ hơn 300 giây";
+  if (time > 999) return "Thời gian phải nhỏ hơn 999 giây";
   if (port < 1 || port > 65535) return "Cổng không hợp lệ";
   if (!["flood", "killer", "bypass", "tlskill", "priv-flood"].includes(method.toLowerCase())) {
     return "Phương thức không hợp lệ";
