@@ -5,7 +5,7 @@ const axios = require("axios");
 const app = express();
 const port = 9999;
 
-const maxConcurrentAttacks = 1;
+const maxConcurrentAttacks = 10;
 let activeAttacks = 0;
 
 // Lấy IP công cộng
