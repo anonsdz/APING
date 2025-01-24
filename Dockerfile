@@ -13,7 +13,7 @@ RUN apt update -y && apt install -y --no-install-recommends \
     && curl -sL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
     && pip3 install requests python-telegram-bot pytz termcolor psutil \
-    && npm install colors set-cookie-parser request hpack axios hpack https commander socks chalk chalk@2 \
+    && npm install colors set-cookie-parser request axios hpack https commander socks chalk chalk@2 \
     # Cài đặt express
     && npm install express \
     && apt clean \
